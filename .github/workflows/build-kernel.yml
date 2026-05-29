@@ -255,7 +255,18 @@ jobs:
           export KSU_EXPECTED_SIZE=${{ env.KSU_EXPECTED_SIZE }}
           export KSU_EXPECTED_HASH=${{ env.KSU_EXPECTED_HASH }}
         fi
+        # 1. 生成基础内核配置（gki_defconfig）
         make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.KERNEL_CONFIG }}
+        # 2. 合并 Redmi Turbo 3 (peridot) 专属硬件配置片段
+        scripts/kconfig/merge_config.sh -m out/.config arch/arm64/configs/vendor/peridot_GKI.config
+        scripts/kconfig/merge_config.sh -m out/.config arch/arm64/configs/vendor/peridot_consolidate.config
+        # 3. 合并 Docker 支持片段（请确保仓库中存在 kernel_fragment/docker.config 文件）
+        if [ -f $GITHUB_WORKSPACE/kernel_fragment/docker.config ]; then
+          scripts/kconfig/merge_config.sh -m out/.config $GITHUB_WORKSPACE/kernel_fragment/docker.config
+        fi
+        # 4. 更新配置依赖，生成最终 .config
+        make CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} olddefconfig
+        # 5. 开始编译内核
         if [ ${{ env.ENABLE_CCACHE }} = true ]; then
             make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
         else
